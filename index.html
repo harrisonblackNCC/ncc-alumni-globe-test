@@ -1,64 +1,399 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>NCC Alumni Globe</title>
-
-  <!-- CesiumJS CSS -->
-  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Widgets/widgets.css" />
-
-  <!-- CesiumJS JavaScript -->
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.113/Build/Cesium/Cesium.js"></script>
-
-  <style>
-    html, body, #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      font-family: sans-serif;
-    }
-    .cesium-infoBox {
-      max-width: 300px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alumni Globe - School Alumni Locations</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            color: white;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        #info h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+        
+        #info p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .control-btn {
+            background: #4fc3f7;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background: #29b6f6;
+            transform: translateY(-2px);
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 200;
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #4fc3f7;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-  <div id="cesiumContainer"></div>
+    <div id="container">
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>Loading Alumni Globe...</p>
+        </div>
+        
+        <div id="info">
+            <h1>🎓 Alumni Globe</h1>
+            <p>Interactive 3D visualization of our alumni worldwide</p>
+            <p><strong>Alumni Count:</strong> <span id="alumniCount">0</span></p>
+            <p><strong>Countries:</strong> <span id="countryCount">0</span></p>
+        </div>
+        
+        <div id="controls">
+            <button class="control-btn" onclick="toggleRotation()">⏸️ Pause</button>
+            <button class="control-btn" onclick="resetView()">🔄 Reset</button>
+            <button class="control-btn" onclick="toggleLabels()">🏷️ Labels</button>
+        </div>
+    </div>
 
-  <script>
-    // Initialize Cesium viewer
-    const viewer = new Cesium.Viewer('cesiumContainer', {
-      terrainProvider: Cesium.createWorldTerrain(),
-      infoBox: true,
-      selectionIndicator: true
-    });
-
-    // Sample alumni data
-    const alumniData = [
-      { name: "John Smith", location: { lon: 153.0260, lat: -26.6267 }, details: "Graduated 2020, working in Brisbane" },
-      { name: "Emily Tan", location: { lon: -0.1276, lat: 51.5074 }, details: "Graduated 2018, studying at UCL" },
-      { name: "Carlos Rivera", location: { lon: -99.1332, lat: 19.4326 }, details: "Graduated 2015, working in education" }
-    ];
-
-    // Add pins to the globe
-    alumniData.forEach(alum => {
-      viewer.entities.add({
-        position: Cesium.Cartesian3.fromDegrees(alum.location.lon, alum.location.lat),
-        point: {
-          pixelSize: 10,
-          color: Cesium.Color.RED,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 2
-        },
-        name: alum.name,
-        description: `<strong>${alum.name}</strong><br>${alum.details}`
-      });
-    });
-
-    // Zoom to all entities
-    viewer.zoomTo(viewer.entities);
-  </script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // Global variables
+        let scene, camera, renderer, globe, pointsGroup;
+        let isRotating = true;
+        let showLabels = true;
+        let controls = {};
+        
+        // Sample alumni data - Replace with your actual data
+        const alumniData = [
+            { name: "John Smith", city: "New York", country: "USA", lat: 40.7128, lng: -74.0060, year: 2018 },
+            { name: "Emma Johnson", city: "London", country: "UK", lat: 51.5074, lng: -0.1278, year: 2019 },
+            { name: "Hiroshi Tanaka", city: "Tokyo", country: "Japan", lat: 35.6762, lng: 139.6503, year: 2017 },
+            { name: "Maria Garcia", city: "Madrid", country: "Spain", lat: 40.4168, lng: -3.7038, year: 2020 },
+            { name: "David Brown", city: "Sydney", country: "Australia", lat: -33.8688, lng: 151.2093, year: 2016 },
+            { name: "Sophie Martin", city: "Paris", country: "France", lat: 48.8566, lng: 2.3522, year: 2019 },
+            { name: "Ahmed Hassan", city: "Cairo", country: "Egypt", lat: 30.0444, lng: 31.2357, year: 2018 },
+            { name: "Priya Sharma", city: "Mumbai", country: "India", lat: 19.0760, lng: 72.8777, year: 2021 },
+            { name: "Carlos Silva", city: "São Paulo", country: "Brazil", lat: -23.5505, lng: -46.6333, year: 2017 },
+            { name: "Anna Petrov", city: "Moscow", country: "Russia", lat: 55.7558, lng: 37.6173, year: 2020 },
+            { name: "James Wilson", city: "Toronto", country: "Canada", lat: 43.6532, lng: -79.3832, year: 2019 },
+            { name: "Lisa Chen", city: "Singapore", country: "Singapore", lat: 1.3521, lng: 103.8198, year: 2018 },
+            { name: "Mohammed Al-Rashid", city: "Dubai", country: "UAE", lat: 25.2048, lng: 55.2708, year: 2021 },
+            { name: "Elena Rossi", city: "Rome", country: "Italy", lat: 41.9028, lng: 12.4964, year: 2016 },
+            { name: "Hans Mueller", city: "Berlin", country: "Germany", lat: 52.5200, lng: 13.4050, year: 2020 }
+        ];
+        
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 3;
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 0);
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Create globe
+            createGlobe();
+            
+            // Create alumni points
+            createAlumniPoints();
+            
+            // Add lighting
+            addLighting();
+            
+            // Add stars background
+            createStarField();
+            
+            // Update UI
+            updateStats();
+            
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+            
+            // Start animation
+            animate();
+        }
+        
+        function createGlobe() {
+            const geometry = new THREE.SphereGeometry(1, 64, 64);
+            
+            // Create earth texture using a simple gradient
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Create earth-like gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 512);
+            gradient.addColorStop(0, '#4A90E2');
+            gradient.addColorStop(0.3, '#2E7D32');
+            gradient.addColorStop(0.7, '#1B5E20');
+            gradient.addColorStop(1, '#0D47A1');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 1024, 512);
+            
+            // Add some land masses (simplified)
+            ctx.fillStyle = '#2E7D32';
+            for (let i = 0; i < 50; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.random() * 1024, Math.random() * 512, Math.random() * 30 + 10, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            const material = new THREE.MeshPhongMaterial({
+                map: texture,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            globe = new THREE.Mesh(geometry, material);
+            scene.add(globe);
+            
+            // Add atmosphere glow
+            const atmosphereGeometry = new THREE.SphereGeometry(1.02, 64, 64);
+            const atmosphereMaterial = new THREE.MeshBasicMaterial({
+                color: 0x4fc3f7,
+                transparent: true,
+                opacity: 0.1,
+                side: THREE.BackSide
+            });
+            const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+            scene.add(atmosphere);
+        }
+        
+        function createAlumniPoints() {
+            pointsGroup = new THREE.Group();
+            
+            alumniData.forEach((alumni, index) => {
+                const point = createAlumniPoint(alumni, index);
+                pointsGroup.add(point);
+            });
+            
+            scene.add(pointsGroup);
+        }
+        
+        function createAlumniPoint(alumni, index) {
+            const group = new THREE.Group();
+            
+            // Convert lat/lng to 3D coordinates
+            const phi = (90 - alumni.lat) * (Math.PI / 180);
+            const theta = (alumni.lng + 180) * (Math.PI / 180);
+            
+            const radius = 1.01;
+            const x = -(radius * Math.sin(phi) * Math.cos(theta));
+            const z = (radius * Math.sin(phi) * Math.sin(theta));
+            const y = (radius * Math.cos(phi));
+            
+            // Create point
+            const pointGeometry = new THREE.SphereGeometry(0.01, 8, 8);
+            const pointMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(index / alumniData.length, 0.8, 0.6)
+            });
+            const point = new THREE.Mesh(pointGeometry, pointMaterial);
+            point.position.set(x, y, z);
+            
+            // Create glow effect
+            const glowGeometry = new THREE.SphereGeometry(0.02, 8, 8);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(index / alumniData.length, 0.8, 0.6),
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            glow.position.set(x, y, z);
+            
+            // Create pulsing animation
+            const pulse = () => {
+                const scale = 1 + 0.3 * Math.sin(Date.now() * 0.005 + index);
+                glow.scale.setScalar(scale);
+            };
+            
+            // Store animation function
+            point.userData = { alumni, pulse };
+            
+            group.add(point);
+            group.add(glow);
+            
+            return group;
+        }
+        
+        function addLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+            
+            // Directional light (sun)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 3, 5);
+            scene.add(directionalLight);
+            
+            // Point light for highlights
+            const pointLight = new THREE.PointLight(0x4fc3f7, 0.5, 10);
+            pointLight.position.set(2, 2, 2);
+            scene.add(pointLight);
+        }
+        
+        function createStarField() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.002,
+                transparent: true
+            });
+            
+            const starsVertices = [];
+            for (let i = 0; i < 10000; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 2000;
+                const z = (Math.random() - 0.5) * 2000;
+                starsVertices.push(x, y, z);
+            }
+            
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            const starField = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starField);
+        }
+        
+        function updateStats() {
+            document.getElementById('alumniCount').textContent = alumniData.length;
+            const uniqueCountries = [...new Set(alumniData.map(a => a.country))];
+            document.getElementById('countryCount').textContent = uniqueCountries.length;
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate globe
+            if (isRotating) {
+                globe.rotation.y += 0.005;
+                pointsGroup.rotation.y += 0.005;
+            }
+            
+            // Update point animations
+            pointsGroup.children.forEach(group => {
+                group.children.forEach(child => {
+                    if (child.userData && child.userData.pulse) {
+                        child.userData.pulse();
+                    }
+                });
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Control functions
+        function toggleRotation() {
+            isRotating = !isRotating;
+            const btn = event.target;
+            btn.textContent = isRotating ? '⏸️ Pause' : '▶️ Play';
+        }
+        
+        function resetView() {
+            camera.position.set(0, 0, 3);
+            camera.lookAt(0, 0, 0);
+        }
+        
+        function toggleLabels() {
+            showLabels = !showLabels;
+            const btn = event.target;
+            btn.textContent = showLabels ? '🏷️ Labels' : '🏷️ No Labels';
+        }
+        
+        // Mouse interaction
+        let mouseX = 0, mouseY = 0;
+        
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Subtle camera movement based on mouse
+            camera.position.x += (mouseX * 0.1 - camera.position.x) * 0.05;
+            camera.position.y += (mouseY * 0.1 - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
 </body>
 </html>
