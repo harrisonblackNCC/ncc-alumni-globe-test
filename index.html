@@ -230,8 +230,17 @@
     // Load CSV data
     async function loadAlumniData() {
         try {
-            const response = await window.fs.readFile('alumni.csv', { encoding: 'utf8' });
-            parseCSV(response);
+            // Try to use window.fs if available (Claude.ai environment)
+            if (window.fs && window.fs.readFile) {
+                const response = await window.fs.readFile('alumni.csv', { encoding: 'utf8' });
+                parseCSV(response);
+            } else {
+                // Use fetch for GitHub Pages
+                const response = await fetch('./alumni.csv');
+                if (!response.ok) throw new Error('CSV not found');
+                const csvText = await response.text();
+                parseCSV(csvText);
+            }
         } catch (error) {
             console.error('Failed to load alumni.csv. Using fallback data.', error);
             document.getElementById('loading').textContent = 'alumni.csv not found. Using sample data.';
